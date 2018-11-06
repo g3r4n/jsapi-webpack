@@ -1,13 +1,323 @@
-import SceneView from "esri/views/SceneView";
 import React from "react";
+import MapView from "esri/views/MapView";
+import Map from "esri/Map";
+import Point from "esri/geometry/Point";
+import FeatureLayer from "esri/layers/FeatureLayer";
+import Legend from "esri/widgets/Legend";
+import esriRequest from "esri/request";
+import "esri/layers/graphics/sources/support/MemorySourceWorker";
 
+/**************************************************
+ * Define the specification for each field to create
+ * in the layer
+ **************************************************/
 
+var fields = [
+{
+  name: "ObjectID",
+  alias: "ObjectID",
+  type: "oid"
+},
+{
+  name: "title",
+  alias: "title",
+  type: "string"
+}, {
+  name: "type",
+  alias: "type",
+  type: "string"
+}, {
+  name: "place",
+  alias: "place",
+  type: "string"
+}, {
+  name: "depth",
+  alias: "depth",
+  type: "string"
+}, {
+  name: "time",
+  alias: "time",
+  type: "date"
+}, {
+  name: "mag",
+  alias: "Magnitude",
+  type: "double"
+}, {
+  name: "url",
+  alias: "url",
+  type: "string"
+}, {
+  name: "mmi",
+  alias: "intensity",
+  type: "double"
+}, {
+  name: "felt",
+  alias: "Number of felt reports",
+  type: "double"
+}, {
+  name: "sig",
+  alias: "significance",
+  type: "double"
+}];
+
+// Set up popup template for the layer
+var pTemplate = {
+  title: "{title}",
+  content: [{
+    type: "fields",
+    fieldInfos: [{
+      fieldName: "place",
+      label: "Location",
+      visible: true
+    }, {
+      fieldName: "time",
+      label: "Date and time",
+      visible: true
+    }, {
+      fieldName: "mag",
+      label: "Magnitude",
+      visible: true
+    }, {
+      fieldName: "mmi",
+      label: "Intensity",
+      visible: true
+    }, {
+      fieldName: "depth",
+      label: "Depth",
+      visible: true
+    }, {
+      fieldName: "felt",
+      label: "Number who felt the quake",
+      visible: true,
+      format: {
+        digitSeparator: true,
+        places: 0
+      }
+    }, {
+      fieldName: "sig",
+      label: "Significance",
+      visible: true
+    }, {
+      fieldName: "url",
+      label: "More info",
+      visible: true
+    }]
+  }],
+  fieldInfos: [{
+    fieldName: "time",
+    format: {
+      dateFormat: "short-date-short-time"
+    }
+  }]
+};
+
+/**************************************************
+ * Create the map and view
+ **************************************************/
+
+var map = new Map({
+  basemap: "dark-gray"
+});
 export class WebMapComponent extends React.Component {
   componentDidMount() {
-    const view = new SceneView({
-      map: this.props.webmap,
-      container: this.mapDiv
+    var layer, legend;
+
+
+    // Create MapView
+    var view = new MapView({
+      container: this.mapDiv,
+      map: map,
+      center: [-144.492, 62.771],
+      zoom: 5,
+      // customize ui padding for legend placement
+      ui: {
+        padding: {
+          bottom: 15,
+          right: 0
+        }
+      }
     });
+
+    /**************************************************
+     * Define the renderer for symbolizing earthquakes
+     **************************************************/
+
+    var quakesRenderer = {
+      type: "simple", // autocasts as new SimpleRenderer()
+      symbol: {
+        type: "simple-marker", // autocasts as new SimpleMarkerSymbol()
+        style: "circle",
+        size: 20,
+        color: [211, 255, 0, 0],
+        outline: {
+          width: 1,
+          color: "#FF0055",
+          style: "solid"
+        }
+      },
+      visualVariables: [
+      {
+        type: "size",
+        field: "mag", // earthquake magnitude
+        valueUnit: "unknown",
+        minDataValue: 2,
+        maxDataValue: 7,
+        // Define size of mag 2 quakes based on scale
+        minSize: {
+          type: "size",
+          valueExpression: "$view.scale",
+          stops: [
+          {
+            value: 1128,
+            size: 12
+          },
+          {
+            value: 36111,
+            size: 12
+          },
+          {
+            value: 9244649,
+            size: 6
+          },
+          {
+            value: 73957191,
+            size: 4
+          },
+          {
+            value: 591657528,
+            size: 2
+          }]
+        },
+        // Define size of mag 7 quakes based on scale
+        maxSize: {
+          type: "size",
+          valueExpression: "$view.scale",
+          stops: [
+          {
+            value: 1128,
+            size: 80
+          },
+          {
+            value: 36111,
+            size: 60
+          },
+          {
+            value: 9244649,
+            size: 50
+          },
+          {
+            value: 73957191,
+            size: 50
+          },
+          {
+            value: 591657528,
+            size: 25
+          }]
+        }
+      }]
+    };
+
+    view.when(function() {
+      // Request the earthquake data from USGS when the view resolves
+      getData()
+        .then(createGraphics) // then send it to the createGraphics() method
+        .then(createLayer) // when graphics are created, create the layer
+        .then(createLegend) // when layer is created, create the legend
+        .catch(errback);
+    });
+
+    // Request the earthquake data
+    function getData() {
+
+      // data downloaded from the USGS at http://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/ on 4/4/16
+      // week.json represents recorded earthquakes between 03/28/2016 and 04/04/2016
+
+      var url = "https://developers.arcgis.com/javascript/latest/sample-code/layers-featurelayer-collection/live/data/week.json";
+
+      return esriRequest(url, {
+        responseType: "json"
+      });
+    }
+
+    /**************************************************
+     * Create graphics with returned geojson data
+     **************************************************/
+
+    function createGraphics(response) {
+      // raw GeoJSON data
+      var geoJson = response.data;
+
+      // Create an array of Graphics from each GeoJSON feature
+      return geoJson.features.map(function(feature, i) {
+        return {
+          geometry: new Point({
+            x: feature.geometry.coordinates[0],
+            y: feature.geometry.coordinates[1]
+          }),
+          // select only the attributes you care about
+          attributes: {
+            ObjectID: i,
+            title: feature.properties.title,
+            type: feature.properties.type,
+            place: feature.properties.place,
+            depth: feature.geometry.coordinates[2] + " km",
+            time: feature.properties.time,
+            mag: feature.properties.mag,
+            mmi: feature.properties.mmi,
+            felt: feature.properties.felt,
+            sig: feature.properties.sig,
+            url: feature.properties.url
+          }
+        };
+      });
+    }
+
+    /**************************************************
+     * Create a FeatureLayer with the array of graphics
+     **************************************************/
+
+    function createLayer(graphics) {
+
+      layer = new FeatureLayer({
+        source: graphics, // autocast as an array of esri/Graphic
+        // create an instance of esri/layers/support/Field for each field object
+        fields: fields, // This is required when creating a layer from Graphics
+        objectIdField: "ObjectID", // This must be defined when creating a layer from Graphics
+        renderer: quakesRenderer, // set the visualization on the layer
+        popupTemplate: pTemplate
+      });
+
+      map.add(layer);
+      return layer;
+    }
+
+    /******************************************************************
+     * Add layer to layerInfos in the legend
+     ******************************************************************/
+
+    function createLegend(layer) {
+      // if the legend already exists, then update it with the new layer
+      if (legend) {
+        legend.layerInfos = [{
+          layer: layer,
+          title: "Magnitude"
+        }];
+      } else {
+        legend = new Legend({
+          view: view,
+          layerInfos: [
+          {
+            layer: layer,
+            title: "Earthquake"
+          }]
+        }, "infoDiv");
+      }
+    }
+
+    // Executes if data retrieval was unsuccessful.
+    function errback(error) {
+      console.error("Creating legend failed. ", error);
+    }
     this.props.onload(view);
   }
 
