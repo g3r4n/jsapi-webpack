@@ -4,3 +4,16 @@ $font-path: "~calcite-web/dist/fonts" !default;
 @import "~calcite-web/dist/sass/calcite-web-no-fonts";
 @import "~arcgis-js-api/themes/light/main.css";
 @import "index";
+
+#infoDiv {
+    position: absolute;
+    bottom: 15px;
+    right: 0;
+    max-height: 80%;
+    max-width: 300px;
+    background-color: black;
+    padding: 8px;
+    border-top-left-radius: 5px;
+    color: white;
+    opacity: 0.8;
+  }

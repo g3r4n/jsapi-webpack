@@ -49,6 +49,10 @@ ReactDOM.render(
     <WebMapComponent
       webmap={webmap}
       onload={onComponentLoad} />
+      <div id="infoDiv">
+    <h2>Worldwide Earthquakes</h2>
+    Reported from 03/28/16 to 04/04/16
+  </div>
   </div>,
   addDOMNode()
 );
